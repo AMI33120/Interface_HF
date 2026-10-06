@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>local agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+:root{
+  --bg:#17181a;
+  --panel:#1e2022;
+  --panel-2:#232527;
+  --border:#2c2f33;
+  --text:#e9e6df;
+  --muted:#8b8d91;
+  --copper:#c98a4b;
+  --copper-dim:#8a5f36;
+  --slate:#6f93b8;
+  --slate-dim:#3d4d5c;
+  --err:#c0605a;
+  --mono:'IBM Plex Mono', ui-monospace, monospace;
+  --sans:'Inter', system-ui, sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);height:100vh;overflow:hidden}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#333638;border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+
+.app{display:flex;height:100vh}
+
+/* ---------- sidebar ---------- */
+.sidebar{width:290px;flex:none;background:var(--panel);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;padding:20px 18px}
+.brand{font-family:var(--mono);font-weight:600;font-size:13px;letter-spacing:.12em;color:var(--copper);
+  text-transform:uppercase;margin-bottom:2px}
+.brand-sub{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:22px}
+.field{margin-bottom:14px}
+.field label{display:block;font-family:var(--mono);font-size:11px;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.field input{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+  padding:9px 10px;border-radius:6px;font-family:var(--mono);font-size:12.5px;outline:none}
+.field input:focus{border-color:var(--copper-dim)}
+.row{display:flex;gap:8px}
+.row .field{flex:1}
+.btn{font-family:var(--mono);font-size:12px;letter-spacing:.03em;border-radius:6px;border:1px solid var(--border);
+  background:var(--panel-2);color:var(--text);padding:9px 12px;cursor:pointer;transition:.15s}
+.btn:hover{border-color:var(--copper-dim);color:var(--copper)}
+.btn.primary{background:var(--copper);border-color:var(--copper);color:#1b1300;font-weight:600}
+.btn.primary:hover{background:#d99a5f;color:#1b1300}
+.btn.small{padding:6px 9px;font-size:11px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+.status{margin-top:auto;padding-top:16px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px}
+.status .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--muted);margin-right:6px}
+.status.ok .dot{background:#77b06a}
+.status.err .dot{background:var(--err)}
+.status-path{color:var(--muted);word-break:break-all;margin-top:6px;line-height:1.5}
+
+.chat-list{max-height:230px;overflow-y:auto;display:flex;flex-direction:column;gap:5px}
+.chat-list-empty{font-family:var(--mono);font-size:11px;color:var(--muted);padding:4px 2px}
+.chat-item{position:relative;padding:8px 26px 8px 10px;border-radius:7px;border:1px solid var(--border);
+  cursor:pointer;background:var(--panel-2)}
+.chat-item:hover{border-color:var(--copper-dim)}
+.chat-item.active{border-color:var(--copper)}
+.chat-item .ci-title{font-family:var(--sans);font-size:12px;color:var(--text);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.chat-item .ci-meta{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-item .ci-del{position:absolute;top:6px;right:6px;width:16px;height:16px;border-radius:4px;
+  border:none;background:none;color:var(--muted);font-size:11px;cursor:pointer;line-height:16px;
+  text-align:center;padding:0}
+.chat-item .ci-del:hover{color:var(--err);background:rgba(192,96,90,.12)}
+
+/* ---------- main ---------- */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.breadcrumb{padding:11px 24px;border-bottom:1px solid var(--border);font-family:var(--mono);
+  font-size:12px;color:var(--muted);background:var(--bg);display:flex;align-items:center;gap:8px}
+.breadcrumb .prompt{color:var(--copper)}
+.breadcrumb .path{color:var(--text)}
+.breadcrumb .spacer{flex:1}
+.new-chat-btn{font-family:var(--mono);font-size:11px;color:var(--muted);background:none;
+  border:1px solid var(--border);border-radius:6px;padding:5px 10px;cursor:pointer}
+.new-chat-btn:hover{color:var(--copper);border-color:var(--copper-dim)}
+
+.messages{flex:1;overflow-y:auto;padding:28px 0}
+.msg-wrap{max-width:760px;margin:0 auto 22px;padding:0 24px}
+.msg-user{display:flex;justify-content:flex-end}
+.msg-user .bubble{background:var(--copper);color:#1b1300;padding:11px 15px;border-radius:14px 14px 3px 14px;
+  max-width:78%;font-size:14.5px;line-height:1.5;white-space:pre-wrap}
+.msg-assistant{max-width:100%}
+.assistant-body{font-size:14.5px;line-height:1.62}
+.assistant-body p{margin:0 0 10px}
+.assistant-body code{font-family:var(--mono);background:var(--panel-2);padding:1px 5px;border-radius:4px;font-size:.9em}
+.assistant-body pre{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;
+  overflow-x:auto;margin:10px 0}
+.assistant-body pre code{background:none;padding:0}
+.assistant-body ul,.assistant-body ol{padding-left:20px;margin:8px 0}
+
+.think-block{margin-bottom:8px;border-left:2px solid var(--slate-dim);padding-left:10px}
+.think-toggle{font-family:var(--mono);font-size:10.5px;color:var(--muted);cursor:pointer;user-select:none;
+  display:flex;align-items:center;gap:6px;opacity:.85}
+.think-toggle:hover{color:var(--slate);opacity:1}
+.think-toggle .car{transition:.15s;font-size:9px}
+.think-toggle .dot{width:5px;height:5px;border-radius:50%;background:var(--slate);animation:think-pulse 1.1s ease-in-out infinite}
+@keyframes think-pulse{0%,100%{opacity:.25}50%{opacity:1}}
+.think-text{font-family:var(--mono);font-size:11.5px;color:#a7a9ae;white-space:pre-wrap;margin-top:5px;
+  max-height:220px;overflow-y:auto;line-height:1.5}
+.think-block.collapsed .think-text{display:none}
+.think-block.collapsed .car{transform:rotate(-90deg)}
+
+.tool-card{font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--border);
+  border-radius:8px;margin:8px 0;overflow:hidden}
+.tool-head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;color:var(--slate)}
+.tool-head .tag{background:var(--slate-dim);color:#dce8f2;padding:1px 6px;border-radius:4px;font-size:10px;
+  letter-spacing:.05em}
+.tool-head .name{color:var(--text)}
+.tool-head .spinner{margin-left:auto;width:11px;height:11px;border-radius:50%;border:2px solid var(--border);
+  border-top-color:var(--slate);animation:spin .7s linear infinite}
+.tool-body{display:none;padding:0 12px 12px;color:var(--muted);border-top:1px solid var(--border)}
+.tool-card.open .tool-body{display:block}
+.tool-body .lbl{color:var(--slate);margin:8px 0 3px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
+.tool-body pre{white-space:pre-wrap;word-break:break-word;margin:0;background:var(--panel-2);padding:8px 10px;
+  border-radius:6px;max-height:220px;overflow-y:auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.error-line{font-family:var(--mono);font-size:12.5px;color:var(--err);padding:8px 0}
+.hint{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:center;margin-top:60px}
+.hint b{color:var(--copper)}
+
+/* ---------- composer ---------- */
+.composer{border-top:1px solid var(--border);padding:16px 24px 20px;background:var(--bg)}
+.composer-inner{max-width:760px;margin:0 auto;display:flex;gap:10px;align-items:flex-end;
+  background:var(--panel-2);border:1px solid var(--border);border-radius:14px;padding:10px 10px 10px 16px}
+.composer-inner:focus-within{border-color:var(--copper-dim)}
+textarea{flex:1;background:none;border:none;outline:none;color:var(--text);font-family:var(--sans);
+  font-size:14.5px;line-height:1.5;resize:none;max-height:40vh;padding:6px 0}
+textarea::placeholder{color:var(--muted)}
+.send-btn{flex:none;background:var(--copper);border:none;color:#1b1300;width:34px;height:34px;border-radius:9px;
+  cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.send-btn:disabled{background:var(--panel);color:var(--muted);cursor:not-allowed}
+.upload-btn{flex:none;background:none;border:1px solid var(--border);color:var(--muted);width:34px;height:34px;
+  border-radius:9px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+.upload-btn:hover:not(:disabled){color:var(--copper);border-color:var(--copper-dim)}
+.upload-btn:disabled{cursor:not-allowed;opacity:.4}
+
+.upload-card{font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--border);
+  border-radius:8px;margin:10px auto;max-width:760px;padding:10px 14px}
+.upload-card .up-title{color:var(--slate);margin-bottom:4px}
+.upload-card .up-line{color:var(--muted);padding:1px 0}
+.upload-card .up-line.err{color:var(--err)}
+
+/* ---------- folder picker modal ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50}
+.modal-bg.show{display:flex}
+.modal{width:460px;max-height:70vh;background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  display:flex;flex-direction:column;overflow:hidden}
+.modal-head{padding:14px 18px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;
+  color:var(--muted);word-break:break-all}
+.modal-list{flex:1;overflow-y:auto;padding:6px}
+.modal-item{padding:8px 12px;border-radius:7px;font-family:var(--mono);font-size:13px;cursor:pointer;
+  display:flex;align-items:center;gap:8px}
+.modal-item:hover{background:var(--panel-2)}
+.modal-foot{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+
+/* ---------- approval card ---------- */
+.confirm-card{font-family:var(--mono);font-size:12.5px;background:var(--panel);
+  border:1px solid var(--copper-dim);border-radius:8px;margin:10px 0;padding:12px 14px}
+.confirm-card.risky{border-color:var(--err)}
+.confirm-card.resolved{opacity:.7}
+.confirm-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;color:var(--copper)}
+.confirm-card.risky .confirm-head{color:var(--err)}
+.confirm-head .tag{background:var(--copper-dim);color:#fff2e2;padding:1px 6px;border-radius:4px;font-size:10px;
+  letter-spacing:.05em}
+.confirm-card.risky .confirm-head .tag{background:var(--err);color:#fff}
+.risk-badge{background:var(--err);color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;letter-spacing:.05em}
+.confirm-label{color:var(--muted);font-size:11px}
+.confirm-cmd{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:12.5px;border-radius:6px;padding:8px 10px;resize:vertical;min-height:44px;
+  outline:none}
+.confirm-cmd:focus{border-color:var(--copper-dim)}
+.confirm-actions{display:flex;gap:8px;margin-top:9px}
+.confirm-actions .btn.approve{background:var(--copper);border-color:var(--copper);color:#1b1300;font-weight:600}
+.confirm-actions .btn.deny{border-color:var(--err);color:var(--err)}
+.confirm-actions .btn.deny:hover{background:rgba(192,96,90,.12)}
+.deny-reason-row{display:none;gap:8px;margin-top:9px}
+.deny-reason-row input{flex:1;background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:12px;border-radius:6px;padding:7px 9px;outline:none}
+.confirm-resolved-line{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">Local Agent</div>
+    <div class="brand-sub">llama.cpp / OpenAI-compatible</div>
+
+    <div class="field">
+      <label>Endpoint URL</label>
+      <input id="baseUrl" placeholder="http://127.0.0.1:8080" value="http://127.0.0.1:8080">
+    </div>
+    <div class="field">
+      <label>HF Token (only for hosted Inference Endpoints)</label>
+      <input id="hfToken" type="password" placeholder="hf_...">
+    </div>
+    <div class="field">
+      <label>Model name (optional)</label>
+      <input id="modelName" placeholder="qwen3.5-35b">
+    </div>
+    <div class="field">
+      <label>Max response tokens</label>
+      <input id="maxTokens" type="number" min="256" step="256" value="4096">
+    </div>
+    <div class="field">
+      <label>Sandbox folder</label>
+      <div class="row">
+        <input id="sandboxPath" placeholder="/home/you/project">
+        <button class="btn small" id="browseBtn">Browse</button>
+      </div>
+    </div>
+    <button class="btn primary" id="connectBtn" style="width:100%">Connect</button>
+
+    <div class="field" style="margin-top:16px;display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="autoApprove" style="width:auto;accent-color:var(--copper)">
+      <label for="autoApprove" style="margin:0;text-transform:none;font-size:11.5px;letter-spacing:0;cursor:pointer">
+        Auto-approve terminal commands
+      </label>
+    </div>
+
+    <div class="field" style="margin-top:16px">
+      <label>Previous chats</label>
+      <div id="chatList" class="chat-list"><div class="chat-list-empty">none yet</div></div>
+    </div>
+
+    <div class="status" id="statusBox">
+      <span class="dot"></span><span id="statusText">not connected</span>
+      <div class="status-path" id="statusPath"></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="breadcrumb"><span class="prompt">agent@sandbox</span><span>:</span>
+      <span class="path" id="breadcrumbPath">~</span><span class="prompt">$</span>
+      <span class="spacer"></span>
+      <button class="new-chat-btn" id="newChatBtn">New chat</button></div>
+
+    <div class="messages" id="messages">
+      <div class="hint">Set your endpoint and pick a sandbox folder on the left, then hit <b>Connect</b>.<br>
+      The model can only read, write, and run commands inside that folder.</div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-inner">
+        <button class="upload-btn" id="uploadBtn" disabled title="Upload files into the sandbox">&#128206;</button>
+        <input type="file" id="fileInput" multiple style="display:none">
+        <textarea id="input" placeholder="Message the agent..." rows="1" disabled></textarea>
+        <button class="send-btn" id="sendBtn" disabled>&#8594;</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <div class="modal-head" id="modalPath">/</div>
+    <div class="modal-list" id="modalList"></div>
+    <div class="modal-foot">
+      <button class="btn small" id="modalCancel">Cancel</button>
+      <button class="btn small primary" id="modalSelect">Select this folder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let connected = false;
+let sandboxPath = "";
+let currentChatId = null;
+
+// ---------- folder picker ----------
+let browseCurrent = "";
+async function openBrowser(path) {
+  const res = await fetch('/api/browse?path=' + encodeURIComponent(path || ''));
+  const data = await res.json();
+  if (data.error) return;
+  browseCurrent = data.path;
+  $('modalPath').textContent = data.path;
+  const list = $('modalList');
+  list.innerHTML = '';
+  if (data.parent && data.parent !== data.path) {
+    const up = document.createElement('div');
+    up.className = 'modal-item';
+    up.innerHTML = '&#8593; ..';
+    up.onclick = () => openBrowser(data.parent);
+    list.appendChild(up);
+  }
+  data.dirs.forEach(name => {
+    const item = document.createElement('div');
+    item.className = 'modal-item';
+    item.innerHTML = '&#128193; ' + name;
+    item.onclick = () => openBrowser(data.path.replace(/\/$/, '') + '/' + name);
+    list.appendChild(item);
+  });
+  $('modalBg').classList.add('show');
+}
+$('browseBtn').onclick = () => openBrowser($('sandboxPath').value || '');
+$('modalCancel').onclick = () => $('modalBg').classList.remove('show');
+$('modalSelect').onclick = () => {
+  $('sandboxPath').value = browseCurrent;
+  $('modalBg').classList.remove('show');
+};
+
+// ---------- connect ----------
+$('connectBtn').onclick = async () => {
+  const base_url = $('baseUrl').value.trim();
+  const sandbox = $('sandboxPath').value.trim();
+  const model = $('modelName').value.trim();
+  const hf_token = $('hfToken').value.trim();
+  const max_tokens = parseInt($('maxTokens').value, 10) || 4096;
+  if (!base_url || !sandbox) {
+    setStatus(false, 'endpoint and folder both required');
+    return;
+  }
+  const res = await fetch('/api/config', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({base_url, sandbox, model, hf_token, max_tokens, create_if_missing: true, auto_approve_terminal: $('autoApprove').checked})
+  });
+  const data = await res.json();
+  if (!data.ok) { setStatus(false, data.error); return; }
+  connected = true;
+  sandboxPath = data.sandbox;
+  setStatus(true, 'connected');
+  $('statusPath').textContent = sandboxPath;
+  $('breadcrumbPath').textContent = sandboxPath;
+  $('input').disabled = false;
+  $('sendBtn').disabled = false;
+  $('uploadBtn').disabled = false;
+  $('messages').innerHTML = '';
+  currentChatId = null; // a fresh chat row is created lazily on the first message
+  refreshChatList();
+};
+function setStatus(ok, text) {
+  const box = $('statusBox');
+  box.classList.toggle('ok', ok);
+  box.classList.toggle('err', !ok && text !== 'not connected');
+  $('statusText').textContent = text;
+}
+
+$('autoApprove').onchange = () => {
+  fetch('/api/settings', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({auto_approve_terminal: $('autoApprove').checked})
+  });
+};
+$('maxTokens').onchange = () => {
+  const max_tokens = parseInt($('maxTokens').value, 10) || 4096;
+  fetch('/api/settings', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({max_tokens})
+  });
+};
+$('newChatBtn').onclick = async () => {
+  await fetch('/api/reset', {method: 'POST'});
+  $('messages').innerHTML = '';
+  currentChatId = null;
+  refreshChatList();
+};
+
+// ---------- previous chats ----------
+function timeAgo(iso) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+async function refreshChatList() {
+  const res = await fetch('/api/chats');
+  const data = await res.json();
+  if (data.active_id) currentChatId = data.active_id;
+  const list = $('chatList');
+  const chats = data.chats || [];
+  if (!chats.length) {
+    list.innerHTML = '<div class="chat-list-empty">none yet</div>';
+    return;
+  }
+  list.innerHTML = '';
+  chats.forEach(c => {
+    const item = document.createElement('div');
+    item.className = 'chat-item' + (c.id === currentChatId ? ' active' : '');
+    const shortSandbox = (c.sandbox || '').split('/').slice(-2).join('/');
+    item.innerHTML = `
+      <div class="ci-title"></div>
+      <div class="ci-meta"></div>
+      <button class="ci-del" title="Delete this chat">&times;</button>`;
+    item.querySelector('.ci-title').textContent = c.title || 'New chat';
+    item.querySelector('.ci-meta').textContent = `${c.msg_count} msgs · ${shortSandbox} · ${timeAgo(c.updated_at)}`;
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.ci-del')) return;
+      loadChat(c.id);
+    });
+    item.querySelector('.ci-del').onclick = async (e) => {
+      e.stopPropagation();
+      await fetch(`/api/chats/${c.id}`, {method: 'DELETE'});
+      if (c.id === currentChatId) { currentChatId = null; $('messages').innerHTML = ''; }
+      refreshChatList();
+    };
+    list.appendChild(item);
+  });
+}
+
+async function loadChat(chatId) {
+  const res = await fetch(`/api/chats/${chatId}/load`, {method: 'POST'});
+  const data = await res.json();
+  if (!data.ok) return;
+  currentChatId = chatId;
+  connected = true;
+  sandboxPath = data.sandbox;
+  $('sandboxPath').value = sandboxPath;
+  $('statusPath').textContent = sandboxPath + (data.sandbox_exists ? '' : '  (folder no longer exists on disk)');
+  $('breadcrumbPath').textContent = sandboxPath;
+  setStatus(true, data.sandbox_exists ? 'connected' : 'connected (folder missing)');
+  $('input').disabled = false;
+  $('sendBtn').disabled = false;
+  $('uploadBtn').disabled = false;
+  renderHistoryEvents(data.events);
+  refreshChatList();
+}
+
+function renderHistoryEvents(events) {
+  $('messages').innerHTML = '';
+  let t = null;
+  for (const evt of events) {
+    if (evt.type === 'user_turn') {
+      addUserBubble(evt.text);
+      const wrap = newAssistantWrap();
+      t = {wrap, thinkBlock: null, thinkTextEl: null, thinkBuffer: '', bodyEl: null, contentBuffer: '', toolCards: {}};
+    } else if (t) {
+      handleEvent(t, evt);
+    }
+  }
+  currentTurn = t;
+  scrollDown();
+}
+
+// ---------- file upload ----------
+$('uploadBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = async () => {
+  const files = Array.from($('fileInput').files || []);
+  $('fileInput').value = ''; // allow re-selecting the same file later
+  if (!files.length || !connected) return;
+
+  const card = document.createElement('div');
+  card.className = 'upload-card';
+  card.innerHTML = `<div class="up-title">uploading ${files.length} file(s)...</div>`;
+  $('messages').appendChild(card);
+  scrollDown();
+
+  const form = new FormData();
+  files.forEach(f => form.append('files', f));
+
+  try {
+    const res = await fetch('/api/upload', {method: 'POST', body: form});
+    const data = await res.json();
+    if (!data.ok) {
+      card.innerHTML = `<div class="up-title">upload failed</div><div class="up-line err">${escapeHtml(data.error || 'unknown error')}</div>`;
+    } else {
+      const lines = data.results.map(r => {
+        if (r.error) return `<div class="up-line err">${escapeHtml(r.name)}: ${escapeHtml(r.error)}</div>`;
+        if (r.type === 'zip') return `<div class="up-line">${escapeHtml(r.name)} → extracted to ${escapeHtml(r.extracted_to)}/ (${r.file_count} files)</div>`;
+        return `<div class="up-line">${escapeHtml(r.name)} → saved as ${escapeHtml(r.saved_as)} (${r.size} bytes)</div>`;
+      }).join('');
+      card.innerHTML = `<div class="up-title">uploaded to sandbox</div>${lines}`;
+    }
+  } catch (e) {
+    card.innerHTML = `<div class="up-title">upload failed</div><div class="up-line err">${escapeHtml(e.message)}</div>`;
+  }
+  scrollDown();
+};
+
+// ---------- composer ----------
+const input = $('input');
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, window.innerHeight * 0.4) + 'px';
+});
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+$('sendBtn').onclick = send;
+
+function addUserBubble(text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap msg-user';
+  wrap.innerHTML = `<div class="bubble"></div>`;
+  wrap.querySelector('.bubble').textContent = text;
+  $('messages').appendChild(wrap);
+  scrollDown();
+}
+
+function newAssistantWrap() {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap msg-assistant';
+  $('messages').appendChild(wrap);
+  scrollDown();
+  return wrap;
+}
+
+function scrollDown() {
+  const m = $('messages');
+  m.scrollTop = m.scrollHeight;
+}
+
+let currentTurn = null; // {wrap, thinkBlock, thinkTextEl, thinkBuffer, bodyEl, contentBuffer, toolCards}
+
+function setComposerBusy(busy) {
+  $('sendBtn').disabled = busy;
+  $('uploadBtn').disabled = busy || !connected;
+  input.disabled = busy || !connected;
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text || !connected) return;
+  input.value = '';
+  input.style.height = 'auto';
+  addUserBubble(text);
+  setComposerBusy(true);
+
+  const wrap = newAssistantWrap();
+  currentTurn = {wrap, thinkBlock: null, thinkTextEl: null, thinkBuffer: '', bodyEl: null,
+                 contentBuffer: '', toolCards: {}};
+
+  await streamRequest('/api/chat', {message: text});
+}
+
+async function streamRequest(url, body) {
+  const t = currentTurn;
+  try {
+    const res = await fetch(url, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, {stream: true});
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data:')) continue;
+        handleEvent(t, JSON.parse(part.slice(5).trim()));
+      }
+    }
+  } catch (e) {
+    const err = document.createElement('div');
+    err.className = 'error-line';
+    err.textContent = 'Connection error: ' + e.message;
+    t.wrap.appendChild(err);
+    setComposerBusy(false);
+  }
+  scrollDown();
+}
+
+function ensureThink(t) {
+  if (t.thinkBlock) return;
+  t.thinkBlock = document.createElement('div');
+  t.thinkBlock.className = 'think-block collapsed';
+  t.thinkBlock.innerHTML = `<div class="think-toggle"><span class="car">&#9660;</span><span class="dot"></span><span>thinking</span></div><div class="think-text"></div>`;
+  t.thinkBlock.querySelector('.think-toggle').onclick = () => t.thinkBlock.classList.toggle('collapsed');
+  t.thinkTextEl = t.thinkBlock.querySelector('.think-text');
+  t.wrap.appendChild(t.thinkBlock);
+}
+function stopThinkingPulse(t) {
+  if (!t.thinkBlock) return;
+  const dot = t.thinkBlock.querySelector('.dot');
+  if (dot) dot.remove();
+}
+function ensureBody(t) {
+  if (t.bodyEl) return;
+  t.bodyEl = document.createElement('div');
+  t.bodyEl.className = 'assistant-body';
+  t.wrap.appendChild(t.bodyEl);
+}
+
+function handleEvent(t, evt) {
+  if (evt.type === 'thinking') {
+    ensureThink(t);
+    t.thinkBuffer += evt.text;
+    t.thinkTextEl.textContent = t.thinkBuffer;
+    scrollDown();
+  } else if (evt.type === 'content') {
+    stopThinkingPulse(t);
+    ensureBody(t);
+    t.contentBuffer += evt.text;
+    t.bodyEl.innerHTML = marked.parse(t.contentBuffer);
+    scrollDown();
+  } else if (evt.type === 'tool_call') {
+    stopThinkingPulse(t);
+    if (t.thinkBlock) t.thinkBlock.classList.add('collapsed');
+    const card = document.createElement('div');
+    card.className = 'tool-card';
+    card.innerHTML = `
+      <div class="tool-head">
+        <span class="tag">${escapeHtml(evt.name)}</span>
+        <span class="name">${escapeHtml(argsSummary(evt.name, evt.args))}</span>
+        <span class="spinner"></span>
+      </div>
+      <div class="tool-body">
+        <div class="lbl">arguments</div><pre></pre>
+        <div class="lbl">result</div><pre class="result-pre">running...</pre>
+      </div>`;
+    card.querySelector('.tool-head').addEventListener('click', () => card.classList.toggle('open'));
+    card.querySelector('.tool-body pre').textContent = JSON.stringify(evt.args, null, 2);
+    t.wrap.appendChild(card);
+    t.toolCards[evt.id] = card;
+    scrollDown();
+  } else if (evt.type === 'tool_result') {
+    const card = t.toolCards[evt.id];
+    if (card) {
+      const spinner = card.querySelector('.spinner');
+      if (spinner) spinner.remove();
+      card.querySelector('.result-pre').textContent = evt.result;
+      if (evt.denied) card.classList.add('open');
+    }
+    scrollDown();
+  } else if (evt.type === 'confirm_request') {
+    stopThinkingPulse(t);
+    if (t.thinkBlock) t.thinkBlock.classList.add('collapsed');
+    renderConfirmCard(t, evt);
+    scrollDown();
+    // composer stays disabled -- waiting on the approval card, not a new message
+  } else if (evt.type === 'final') {
+    stopThinkingPulse(t);
+    ensureBody(t);
+    t.bodyEl.innerHTML = marked.parse(evt.text);
+    setComposerBusy(false);
+    refreshChatList();
+    scrollDown();
+  } else if (evt.type === 'error') {
+    stopThinkingPulse(t);
+    const err = document.createElement('div');
+    err.className = 'error-line';
+    err.textContent = evt.message;
+    t.wrap.appendChild(err);
+    setComposerBusy(false);
+    scrollDown();
+  }
+  // 'done' needs no handling -- 'final'/'error' already re-enabled the composer,
+  // and 'confirm_request' deliberately leaves it disabled until resolved.
+}
+
+function renderConfirmCard(t, evt) {
+  const risky = !!evt.risky;
+  const card = document.createElement('div');
+  card.className = 'confirm-card' + (risky ? ' risky' : '');
+  card.innerHTML = `
+    <div class="confirm-head">
+      <span class="tag">run_terminal</span>
+      ${risky ? '<span class="risk-badge">risky pattern</span>' : ''}
+      <span class="confirm-label">wants to run this command in the sandbox</span>
+    </div>
+    <textarea class="confirm-cmd" rows="2"></textarea>
+    <div class="confirm-actions">
+      <button class="btn small approve">Approve &amp; run</button>
+      <button class="btn small deny">Deny</button>
+    </div>
+    <div class="deny-reason-row">
+      <input type="text" placeholder="optional reason for the model (e.g. use a different approach)">
+      <button class="btn small">Send</button>
+    </div>`;
+  card.querySelector('.confirm-cmd').value = evt.args.command || '';
+  t.wrap.appendChild(card);
+
+  const cmdBox = card.querySelector('.confirm-cmd');
+  const approveBtn = card.querySelector('.approve');
+  const denyBtn = card.querySelector('.deny');
+  const reasonRow = card.querySelector('.deny-reason-row');
+  const reasonInput = reasonRow.querySelector('input');
+  const reasonSend = reasonRow.querySelector('button');
+
+  function resolve(label) {
+    card.classList.add('resolved');
+    approveBtn.disabled = true; denyBtn.disabled = true; cmdBox.disabled = true;
+    reasonRow.style.display = 'none';
+    const line = document.createElement('div');
+    line.className = 'confirm-resolved-line';
+    line.textContent = label;
+    card.appendChild(line);
+  }
+
+  approveBtn.onclick = async () => {
+    setComposerBusy(true);
+    const edited = cmdBox.value.trim();
+    const original = (evt.args.command || '').trim();
+    resolve(edited === original ? 'Approved.' : `Approved (edited): ${edited}`);
+    await streamRequest('/api/chat/respond', {
+      id: evt.id, approved: true,
+      edited_command: edited !== original ? edited : null,
+    });
+  };
+  denyBtn.onclick = () => { reasonRow.style.display = 'flex'; denyBtn.disabled = true; approveBtn.disabled = true; };
+  reasonSend.onclick = async () => {
+    setComposerBusy(true);
+    const note = reasonInput.value.trim();
+    resolve('Denied.' + (note ? ` Reason: ${note}` : ''));
+    await streamRequest('/api/chat/respond', {id: evt.id, approved: false, note});
+  };
+}
+
+function argsSummary(name, args) {
+  if (!args) return '';
+  if (args.path) return args.path;
+  if (args.command) return args.command.slice(0, 60);
+  if (args.query) return args.query;
+  return '';
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+refreshChatList();
+</script>
+</body>
+</html>
